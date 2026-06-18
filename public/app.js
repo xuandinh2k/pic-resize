@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchForm = document.getElementById('search-form');
   const searchInput = document.getElementById('search-input');
   const searchButton = document.getElementById('search-button');
+  const searchSource = document.getElementById('search-source');
   
   const resizeWidth = document.getElementById('resize-width');
   const resizeHeight = document.getElementById('resize-height');
@@ -34,10 +35,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const filterMinW = document.getElementById('filter-min-w');
   const filterMinH = document.getElementById('filter-min-h');
 
+  // Processed Panel DOM Elements
+  const processedPanel = document.getElementById('processed-panel');
+  const searchPanel = document.querySelector('.gallery-panel:not(#processed-panel)');
+  const btnBackToSearch = document.getElementById('btn-back-to-search');
+  const compressQuality = document.getElementById('compress-quality');
+  const compressQualityVal = document.getElementById('compress-quality-val');
+  const btnCompressApply = document.getElementById('btn-compress-apply');
+  const processedGrid = document.getElementById('processed-grid');
+  const totalZipSize = document.getElementById('total-zip-size');
+  const btnDownloadZip = document.getElementById('btn-download-zip');
+
   // App State
   let imagesList = [];
   let selectedIndices = new Set();
   let queryKeyword = '';
+  let processedImages = [];
 
   // Helper to filter search results based on UI controls
   function getFilteredImages() {
@@ -94,7 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
     searchInput.disabled = true;
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const source = searchSource ? searchSource.value : 'ddg';
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&source=${source}`);
       if (!response.ok) {
         throw new Error('Đã có lỗi xảy ra khi tìm kiếm ảnh.');
       }
@@ -251,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // have different aspect ratios. But we can adjust one input if there's at least one selected image.
   // We will let the user enter target box dimensions, and apply ratio-preserving fit during the download.
 
-  // Resize & Download Logic
+  // Resize Process (Step 1)
   btnResizeDownload.addEventListener('click', async () => {
     if (selectedIndices.size === 0) return;
 
@@ -260,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
     processingLog.innerHTML = '';
     updateProgress(0, selectedIndices.size);
 
-    const zip = new JSZip();
+    processedImages = [];
     const targetW = parseInt(resizeWidth.value) || 1080;
     const targetH = parseInt(resizeHeight.value) || 1080;
     const keepAspect = lockAspect.checked;
@@ -331,9 +345,19 @@ document.addEventListener('DOMContentLoaded', () => {
         // Step 5: Convert Canvas to Blob
         const resizedBlob = await getCanvasBlob(canvas, format, quality);
 
-        // Step 6: Add to ZIP
+        // Step 6: Store in processed images array
         const fileName = `${queryKeyword.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}_${i + 1}_${w}x${h}.${ext}`;
-        zip.file(fileName, resizedBlob);
+        
+        processedImages.push({
+          name: fileName,
+          canvas: canvas,
+          blob: resizedBlob,
+          format: format,
+          ext: ext,
+          width: w,
+          height: h,
+          objectUrl: null
+        });
 
         successCount++;
         logMessage(`${countLabel} Thành công (${w}x${h})`, 'success');
@@ -354,10 +378,141 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Step 7: Generate ZIP and download
-    logMessage('Đang nén file ZIP...', 'info');
+    logMessage('Đã xử lý xong các hình ảnh!', 'success');
+    
+    // Transition to processed panel view
+    setTimeout(() => {
+      progressModal.classList.add('hidden');
+      searchPanel.classList.add('hidden');
+      processedPanel.classList.remove('hidden');
+      renderProcessedGallery();
+    }, 1500);
+  });
+
+  // Render Processed Images Grid
+  function renderProcessedGallery() {
+    processedGrid.innerHTML = '';
+    let totalBytes = 0;
+
+    processedImages.forEach((item, idx) => {
+      totalBytes += item.blob.size;
+      const card = document.createElement('div');
+      card.className = 'image-card';
+      
+      if (item.objectUrl) {
+        URL.revokeObjectURL(item.objectUrl);
+      }
+      
+      item.objectUrl = URL.createObjectURL(item.blob);
+
+      card.innerHTML = `
+        <img src="${item.objectUrl}" alt="${item.name}">
+        <div class="card-overlay"></div>
+        <div class="card-info" style="display: flex; flex-direction: column; align-items: flex-start; bottom: 8px;">
+          <span class="info-badge" style="max-width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; margin-bottom: 4px;" title="${item.name}">${item.name}</span>
+          <div style="display: flex; justify-content: space-between; width: 100%;">
+            <span class="info-badge dimensions">${item.width}x${item.height}</span>
+            <span class="info-badge size-badge" style="color: var(--accent-pink); font-weight: bold;">${formatSize(item.blob.size)}</span>
+          </div>
+        </div>
+      `;
+      processedGrid.appendChild(card);
+    });
+
+    totalZipSize.textContent = formatSize(totalBytes);
+  }
+
+  // Utility to format file size
+  function formatSize(bytes) {
+    if (bytes >= 1024 * 1024) {
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+    return (bytes / 1024).toFixed(1) + ' KB';
+  }
+
+  // Back to Search view
+  btnBackToSearch.addEventListener('click', () => {
+    processedImages.forEach(item => {
+      if (item.objectUrl) {
+        URL.revokeObjectURL(item.objectUrl);
+      }
+    });
+    processedImages = [];
+    processedPanel.classList.add('hidden');
+    searchPanel.classList.remove('hidden');
+  });
+
+  // Slider change text update
+  compressQuality.addEventListener('input', () => {
+    compressQualityVal.textContent = `${compressQuality.value}%`;
+  });
+
+  // Apply Compression Button Click
+  btnCompressApply.addEventListener('click', async () => {
+    if (processedImages.length === 0) return;
+
+    progressModal.classList.remove('hidden');
+    processingLog.innerHTML = '';
+    updateProgress(0, processedImages.length);
+    
+    const quality = parseFloat(compressQuality.value) / 100;
+    logMessage(`Bắt đầu giảm dung lượng các ảnh xuống mức chất lượng ${compressQuality.value}%...`, 'info');
+
+    for (let i = 0; i < processedImages.length; i++) {
+      const item = processedImages[i];
+      const countLabel = `[${i + 1}/${processedImages.length}]`;
+      logMessage(`${countLabel} Đang nén: ${item.name}...`, 'info');
+
+      try {
+        const formatToUse = item.format === 'image/png' ? 'image/jpeg' : item.format;
+        
+        const compressedBlob = await getCanvasBlob(item.canvas, formatToUse, quality);
+        item.blob = compressedBlob;
+        item.size = compressedBlob.size;
+        
+        if (item.format === 'image/png') {
+          item.name = item.name.replace('.png', '.jpg');
+          item.format = 'image/jpeg';
+          item.ext = 'jpg';
+        }
+
+        logMessage(`${countLabel} Thành công (${formatSize(compressedBlob.size)})`, 'success');
+      } catch (err) {
+        logMessage(`${countLabel} Thất bại: ${err.message}`, 'error');
+      }
+      updateProgress(i + 1, processedImages.length);
+    }
+
+    logMessage('Đã hoàn thành giảm dung lượng!', 'success');
+    
+    setTimeout(() => {
+      progressModal.classList.add('hidden');
+      renderProcessedGallery();
+    }, 1500);
+  });
+
+  // Download ZIP (Step 2)
+  btnDownloadZip.addEventListener('click', async () => {
+    if (processedImages.length === 0) return;
+
+    progressModal.classList.remove('hidden');
+    processingLog.innerHTML = '';
+    updateProgress(0, 1);
+    
+    logMessage('Đang chuẩn bị và tạo file nén ZIP...', 'info');
+
+    const zip = new JSZip();
+    processedImages.forEach(item => {
+      zip.file(item.name, item.blob);
+    });
+
+    updateProgress(1, 2);
+
     try {
       const zipBlob = await zip.generateAsync({ type: 'blob' });
+      updateProgress(2, 2);
+      
+      logMessage('Đang tải xuống file ZIP...', 'success');
       
       const link = document.createElement('a');
       link.href = URL.createObjectURL(zipBlob);
@@ -366,15 +521,14 @@ document.addEventListener('DOMContentLoaded', () => {
       link.click();
       document.body.removeChild(link);
       
-      logMessage('Đã tải xuống file ZIP thành công!', 'success');
+      logMessage('Tải xuống thành công!', 'success');
     } catch (err) {
-      logMessage(`Lỗi khi tạo file nén: ${err.message}`, 'error');
+      logMessage(`Lỗi tạo file nén: ${err.message}`, 'error');
     }
 
-    // Hide modal after delay
     setTimeout(() => {
       progressModal.classList.add('hidden');
-    }, 2500);
+    }, 2000);
   });
 
   // Utility: Load file blob into an image object

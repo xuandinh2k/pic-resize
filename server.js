@@ -11,11 +11,50 @@ app.use(express.json());
 // API Endpoint: Search Images via DuckDuckGo
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
+  const source = req.query.source || 'ddg';
   if (!query) {
     return res.status(400).json({ error: 'Missing search query (q)' });
   }
 
   try {
+    if (source === 'wiki') {
+      // Fetch from Wikimedia Commons API (Highly stable and does not block Vercel)
+      const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&prop=imageinfo&iiprop=url|size|thumburl&iiurlwidth=330&format=json&gsrlimit=100`;
+      
+      const wikiRes = await fetch(wikiUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (!wikiRes.ok) {
+        throw new Error(`Failed to fetch from Wikimedia Commons: ${wikiRes.statusText}`);
+      }
+
+      const data = await wikiRes.json();
+      const pages = data.query ? data.query.pages : {};
+      const results = [];
+
+      for (const [id, page] of Object.entries(pages)) {
+        if (page.imageinfo && page.imageinfo.length > 0) {
+          const info = page.imageinfo[0];
+          results.push({
+            title: page.title.replace('File:', ''),
+            image: info.url,
+            thumbnail: info.thumburl || info.url,
+            width: info.width,
+            height: info.height
+          });
+        }
+      }
+
+      return res.json({
+        query: query,
+        results: results
+      });
+    }
+
+    // Default: DuckDuckGo Image Search
     // Step 1: Fetch main page to get the vqd token
     const mainUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
     const mainRes = await fetch(mainUrl, {
@@ -41,26 +80,52 @@ app.get('/api/search', async (req, res) => {
 
     const vqd = vqdMatch[1];
 
-    // Step 2: Fetch images from the internal DuckDuckGo API
-    const imgUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,`;
-    const imgRes = await fetch(imgUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'Referer': 'https://duckduckgo.com/'
+    let results = [];
+    let nextPath = `/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,`;
+
+    // Fetch 4 pages to get ~300 images
+    for (let page = 1; page <= 4; page++) {
+      let urlPath = nextPath;
+      if (!urlPath.startsWith('/')) {
+        urlPath = '/' + urlPath;
       }
-    });
+      
+      const imgUrl = `https://duckduckgo.com${urlPath}`;
+      const imgRes = await fetch(imgUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+          'Referer': 'https://duckduckgo.com/'
+        }
+      });
 
-    if (!imgRes.ok) {
-      throw new Error(`Failed to fetch images from DuckDuckGo API: ${imgRes.statusText}`);
+      if (!imgRes.ok) {
+        console.warn(`Failed to fetch DuckDuckGo page ${page}: ${imgRes.statusText}`);
+        break;
+      }
+
+      const data = await imgRes.json();
+      const pageResults = data.results || [];
+      results = results.concat(pageResults);
+
+      if (data.next) {
+        nextPath = data.next;
+        if (!nextPath.includes('vqd=')) {
+          nextPath += `&vqd=${vqd}`;
+        }
+      } else {
+        break;
+      }
+
+      // Small delay between requests to be polite to DuckDuckGo
+      if (page < 4) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
     }
-
-    const data = await imgRes.json();
     
     // Return structured results to frontend
-    // data.results contains [{ title, image, thumbnail, width, height, source }]
     res.json({
       query: query,
-      results: data.results || []
+      results: results
     });
 
   } catch (err) {
@@ -107,6 +172,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server is running at http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;

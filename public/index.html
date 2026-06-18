@@ -38,6 +38,13 @@
         <div class="card panel-section">
           <h2><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Tìm kiếm</h2>
           <form id="search-form" class="search-form">
+            <div class="input-group" style="margin-bottom: 0.75rem;">
+              <label for="search-source" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 0.4rem;">Nguồn tìm kiếm</label>
+              <select id="search-source" style="width: 100%; background: rgba(10, 8, 19, 0.6); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.65rem 0.8rem; color: #fff; font-family: var(--font-main); font-size: 0.9rem; outline: none; transition: var(--transition-fast); cursor: pointer;">
+                <option value="ddg" selected>DuckDuckGo (Khuyên dùng cho Local)</option>
+                <option value="wiki">Wikimedia Commons (Tốt nhất cho Vercel)</option>
+              </select>
+            </div>
             <div class="input-wrapper">
               <input type="text" id="search-input" placeholder="Nhập từ khóa (vd: corgi, lamborghini)..." required>
               <button type="submit" id="search-button">
@@ -118,8 +125,8 @@
           </div>
           
           <button id="btn-resize-download" class="btn btn-primary btn-large" disabled>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-            Resize & Tải về (.ZIP)
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l-5 6 5 6"/><path d="M20 18v-6a2 2 0 0 0-2-2h-9"/></svg>
+            Bước 1: Tiến hành Resize
           </button>
         </div>
       </section>
@@ -173,6 +180,53 @@
 
         <!-- Image Grid -->
         <div id="gallery-grid" class="gallery-grid hidden"></div>
+      </section>
+
+      <!-- Right: Processed Panel (Hidden by default) -->
+      <section id="processed-panel" class="gallery-panel hidden">
+        <div class="gallery-header">
+          <h3>Ảnh đã xử lý & Tối ưu dung lượng</h3>
+          <button id="btn-back-to-search" class="btn btn-secondary btn-sm" style="padding: 0.5rem 1rem; font-size: 0.8rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="5" y1="12" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Quay lại tìm kiếm
+          </button>
+        </div>
+
+        <!-- Compression Control Bar -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="m17 5-5-3-5 3"/><path d="m7 19 5 3 5-3"/></svg>
+            <span>Giảm dung lượng:</span>
+          </div>
+          <div class="filter-group" style="flex-grow: 1; max-width: 300px; display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 2px;">
+              <span style="color: var(--text-muted);">Chất lượng nén (JPEG/WEBP):</span>
+              <span id="compress-quality-val" style="color: var(--accent-cyan); font-weight: bold;">80%</span>
+            </div>
+            <input type="range" id="compress-quality" min="10" max="100" value="80" style="width: 100%; accent-color: var(--accent-purple); cursor: pointer;">
+          </div>
+          <div class="filter-group">
+            <button id="btn-compress-apply" class="btn btn-primary" style="padding: 0.5rem 1.2rem; font-size: 0.85rem;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+              Áp dụng nén dung lượng
+            </button>
+          </div>
+        </div>
+
+        <!-- Processed Images Grid -->
+        <div id="processed-grid" class="gallery-grid" style="max-height: 520px;"></div>
+        
+        <!-- Big final ZIP download button at the bottom of the processed grid -->
+        <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; align-items: center; gap: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+          <div style="text-align: right; display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Tổng dung lượng sau nén:</span>
+            <span id="total-zip-size" style="font-size: 1.15rem; color: var(--accent-cyan); font-weight: bold;">0 KB</span>
+          </div>
+          <button id="btn-download-zip" class="btn btn-primary" style="padding: 0.8rem 2.2rem; font-size: 1rem; box-shadow: 0 4px 25px rgba(6, 182, 212, 0.35); background: var(--primary-gradient);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            Bước 2: Tải toàn bộ ảnh (.ZIP)
+          </button>
+        </div>
       </section>
     </main>
   </div>
