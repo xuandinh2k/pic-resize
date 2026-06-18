@@ -8,187 +8,196 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// API Endpoint: Search Images via DuckDuckGo
-app.get('/api/search', async (req, res) => {
-  const query = req.query.q;
-  const source = req.query.source || 'ddg';
-  if (!query) {
-    return res.status(400).json({ error: 'Missing search query (q)' });
-  }
+// API Endpoint: Search Images from all sources (aggregated)
+const isVercel = !!process.env.VERCEL;
 
+async function fetchWithTimeout(url, options = {}, timeout = 6000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
   try {
-    if (source === 'wiki') {
-      // Fetch from Wikimedia Commons API (Highly stable and does not block Vercel)
-      const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&prop=imageinfo&iiprop=url|size|thumburl&iiurlwidth=330&format=json&gsrlimit=100`;
-      
-      const wikiRes = await fetch(wikiUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-        }
-      });
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
 
-      if (!wikiRes.ok) {
-        throw new Error(`Failed to fetch from Wikimedia Commons: ${wikiRes.statusText}`);
-      }
-
-      const data = await wikiRes.json();
-      const pages = data.query ? data.query.pages : {};
-      const results = [];
-
-      for (const [id, page] of Object.entries(pages)) {
-        if (page.imageinfo && page.imageinfo.length > 0) {
-          const info = page.imageinfo[0];
-          results.push({
-            title: page.title.replace('File:', ''),
-            image: info.url,
-            thumbnail: info.thumburl || info.url,
-            width: info.width,
-            height: info.height
-          });
-        }
-      }
-
-      return res.json({
-        query: query,
-        results: results
-      });
-    }
-
-    if (source === 'baidu') {
-      // Fetch from Baidu Images API (Does not block Vercel)
-      const baiduUrl = `https://image.baidu.com/search/acjson?tn=resultjson_com&ipn=rj&fp=result&queryWord=${encodeURIComponent(query)}&cl=2&lm=-1&ie=utf-8&oe=utf-8&word=${encodeURIComponent(query)}&rn=80`;
-      
-      const baiduRes = await fetch(baiduUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-          'Accept': 'text/plain, */*; q=0.01',
-          'Referer': 'https://image.baidu.com/'
-        }
-      });
-
-      if (!baiduRes.ok) {
-        throw new Error(`Failed to fetch from Baidu: ${baiduRes.statusText}`);
-      }
-
-      const rawText = await baiduRes.text();
-      // Clean invalid control characters and backslashes in JSON
-      const cleanText = rawText
-        .replace(/[\x00-\x1F\x7F-\x9F]/g, " ")
-        .replace(/\\(?!["\\\/bfnrtu])/g, "\\\\");
-
-      const data = JSON.parse(cleanText);
-      const items = data.data || [];
-      const results = [];
-
-      items.forEach(item => {
-        if (item.hoverURL || item.middleURL || item.thumbURL) {
-          results.push({
-            title: item.fromPageTitleEnc || item.fromPageTitle || 'Baidu Image',
-            image: item.hoverURL || item.middleURL || item.thumbURL,
-            thumbnail: item.thumbURL || item.middleURL,
-            width: item.width || 1024,
-            height: item.height || 768
-          });
-        }
-      });
-
-      return res.json({
-        query: query,
-        results: results
-      });
-    }
-
-    if (source === 'flickr') {
-      // Fetch from Flickr public feed API (Does not block Vercel)
-      const flickrUrl = `https://www.flickr.com/services/feeds/photos_public.gne?tags=${encodeURIComponent(query)}&format=json&nojsoncallback=1`;
-      
-      const flickrRes = await fetch(flickrUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-        }
-      });
-
-      if (!flickrRes.ok) {
-        throw new Error(`Failed to fetch from Flickr: ${flickrRes.statusText}`);
-      }
-
-      const data = await flickrRes.json();
-      const items = data.items || [];
-      const results = [];
-
-      items.forEach(item => {
-        if (item.media && item.media.m) {
-          const thumbnail = item.media.m;
-          // _m.jpg is medium, replace with _b.jpg for large 1024px
-          const image = item.media.m.replace('_m.', '_b.');
-          results.push({
-            title: item.title || 'Flickr Photo',
-            image: image,
-            thumbnail: thumbnail,
-            width: 1024,
-            height: 768
-          });
-        }
-      });
-
-      return res.json({
-        query: query,
-        results: results
-      });
-    }
-
-    // Default: DuckDuckGo Image Search
-    // Step 1: Fetch main page to get the vqd token
-    const mainUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
-    const mainRes = await fetch(mainUrl, {
+async function fetchWiki(query) {
+  try {
+    const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&prop=imageinfo&iiprop=url|size|thumburl&iiurlwidth=330&format=json&gsrlimit=80`;
+    
+    const res = await fetchWithTimeout(wikiUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
       }
-    });
+    }, 4000);
 
-    if (!mainRes.ok) {
-      throw new Error(`Failed to load DuckDuckGo main page: ${mainRes.statusText}`);
+    if (!res.ok) throw new Error(`Wikimedia returned status ${res.status}`);
+    
+    const data = await res.json();
+    const pages = data.query ? data.query.pages : {};
+    const results = [];
+
+    for (const [id, page] of Object.entries(pages)) {
+      if (page.imageinfo && page.imageinfo.length > 0) {
+        const info = page.imageinfo[0];
+        results.push({
+          title: page.title.replace('File:', ''),
+          image: info.url,
+          thumbnail: info.thumburl || info.url,
+          width: info.width || 1024,
+          height: info.height || 768,
+          source: 'Wikimedia'
+        });
+      }
     }
+    return results;
+  } catch (err) {
+    console.error('fetchWiki error:', err.message);
+    return [];
+  }
+}
+
+async function fetchBaidu(query) {
+  try {
+    const baiduUrl = `https://image.baidu.com/search/acjson?tn=resultjson_com&ipn=rj&fp=result&queryWord=${encodeURIComponent(query)}&cl=2&lm=-1&ie=utf-8&oe=utf-8&word=${encodeURIComponent(query)}&rn=80`;
+    
+    const res = await fetchWithTimeout(baiduUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Accept': 'text/plain, */*; q=0.01',
+        'Referer': 'https://image.baidu.com/'
+      }
+    }, 4000);
+
+    if (!res.ok) throw new Error(`Baidu returned status ${res.status}`);
+    
+    const rawText = await res.text();
+    const cleanText = rawText
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, " ")
+      .replace(/\\(?!["\\\/bfnrtu])/g, "\\\\");
+
+    const data = JSON.parse(cleanText);
+    const items = data.data || [];
+    const results = [];
+
+    items.forEach(item => {
+      if (item.hoverURL || item.middleURL || item.thumbURL) {
+        results.push({
+          title: item.fromPageTitleEnc || item.fromPageTitle || 'Baidu Image',
+          image: item.hoverURL || item.middleURL || item.thumbURL,
+          thumbnail: item.thumbURL || item.middleURL,
+          width: item.width || 1024,
+          height: item.height || 768,
+          source: 'Baidu'
+        });
+      }
+    });
+    return results;
+  } catch (err) {
+    console.error('fetchBaidu error:', err.message);
+    return [];
+  }
+}
+
+async function fetchFlickr(query) {
+  try {
+    const flickrUrl = `https://www.flickr.com/services/feeds/photos_public.gne?tags=${encodeURIComponent(query)}&format=json&nojsoncallback=1`;
+    
+    const res = await fetchWithTimeout(flickrUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+      }
+    }, 4000);
+
+    if (!res.ok) throw new Error(`Flickr returned status ${res.status}`);
+    
+    const data = await res.json();
+    const items = data.items || [];
+    const results = [];
+
+    items.forEach(item => {
+      if (item.media && item.media.m) {
+        const thumbnail = item.media.m;
+        const image = item.media.m.replace('_m.', '_b.');
+        results.push({
+          title: item.title || 'Flickr Photo',
+          image: image,
+          thumbnail: thumbnail,
+          width: 1024,
+          height: 768,
+          source: 'Flickr'
+        });
+      }
+    });
+    return results;
+  } catch (err) {
+    console.error('fetchFlickr error:', err.message);
+    return [];
+  }
+}
+
+async function fetchDDG(query) {
+  const ddgTimeout = isVercel ? 1200 : 4000;
+  
+  try {
+    const mainUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+    
+    const mainRes = await fetchWithTimeout(mainUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+      }
+    }, ddgTimeout);
+
+    if (!mainRes.ok) throw new Error(`DDG main returned status ${mainRes.status}`);
 
     const html = await mainRes.text();
-
-    // Extract the vqd token
     const vqdMatch = html.match(/vqd=["']([^"']+)["']/i) || 
                      html.match(/vqd=([^&"'\s)]+)/i) ||
                      html.match(/vqd\s*:\s*['"]([^'"]+)['"]/i);
 
-    if (!vqdMatch) {
-      throw new Error('Could not find vqd token in DuckDuckGo response');
-    }
+    if (!vqdMatch) throw new Error('Could not find vqd token');
 
     const vqd = vqdMatch[1];
-
     let results = [];
     let nextPath = `/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,`;
 
-    // Fetch 4 pages to get ~300 images
-    for (let page = 1; page <= 4; page++) {
+    const pagesToFetch = isVercel ? 1 : 2;
+
+    for (let page = 1; page <= pagesToFetch; page++) {
       let urlPath = nextPath;
       if (!urlPath.startsWith('/')) {
         urlPath = '/' + urlPath;
       }
       
       const imgUrl = `https://duckduckgo.com${urlPath}`;
-      const imgRes = await fetch(imgUrl, {
+      const imgRes = await fetchWithTimeout(imgUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
           'Referer': 'https://duckduckgo.com/'
         }
-      });
+      }, ddgTimeout);
 
-      if (!imgRes.ok) {
-        console.warn(`Failed to fetch DuckDuckGo page ${page}: ${imgRes.statusText}`);
-        break;
-      }
+      if (!imgRes.ok) break;
 
       const data = await imgRes.json();
       const pageResults = data.results || [];
-      results = results.concat(pageResults);
+      
+      pageResults.forEach(item => {
+        results.push({
+          title: item.title || 'DuckDuckGo Image',
+          image: item.image,
+          thumbnail: item.thumbnail,
+          width: item.width || 1024,
+          height: item.height || 768,
+          source: 'DuckDuckGo'
+        });
+      });
 
       if (data.next) {
         nextPath = data.next;
@@ -199,23 +208,64 @@ app.get('/api/search', async (req, res) => {
         break;
       }
 
-      // Small delay between requests to be polite to DuckDuckGo
-      if (page < 4) {
-        await new Promise(resolve => setTimeout(resolve, 250));
+      if (page < pagesToFetch) {
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
+    return results;
+  } catch (err) {
+    console.error('fetchDDG error:', err.message);
+    return [];
+  }
+}
+
+app.get('/api/search', async (req, res) => {
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: 'Missing search query (q)' });
+  }
+
+  try {
+    // Run searches in parallel
+    const [wikiResults, baiduResults, flickrResults, ddgResults] = await Promise.all([
+      fetchWiki(query),
+      fetchBaidu(query),
+      fetchFlickr(query),
+      fetchDDG(query)
+    ]);
+
+    // Interleave results to mix sources nicely
+    let allResults = [];
+    const maxLength = Math.max(wikiResults.length, baiduResults.length, flickrResults.length, ddgResults.length);
     
-    // Return structured results to frontend
+    for (let i = 0; i < maxLength; i++) {
+      if (i < ddgResults.length) allResults.push(ddgResults[i]);
+      if (i < baiduResults.length) allResults.push(baiduResults[i]);
+      if (i < wikiResults.length) allResults.push(wikiResults[i]);
+      if (i < flickrResults.length) allResults.push(flickrResults[i]);
+    }
+    
+    // Deduplicate by original image URL
+    const seenUrls = new Set();
+    const uniqueResults = [];
+    for (const item of allResults) {
+      if (!seenUrls.has(item.image)) {
+        seenUrls.add(item.image);
+        uniqueResults.push(item);
+      }
+    }
+
     res.json({
       query: query,
-      results: results
+      results: uniqueResults
     });
 
   } catch (err) {
-    console.error('Error during search:', err);
+    console.error('Error during aggregated search:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // API Endpoint: CORS Proxy for Image Downloads
 app.get('/api/proxy', async (req, res) => {

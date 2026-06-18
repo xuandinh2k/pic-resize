@@ -3,7 +3,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchForm = document.getElementById('search-form');
   const searchInput = document.getElementById('search-input');
   const searchButton = document.getElementById('search-button');
-  const searchSource = document.getElementById('search-source');
   
   const resizeWidth = document.getElementById('resize-width');
   const resizeHeight = document.getElementById('resize-height');
@@ -107,8 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     searchInput.disabled = true;
 
     try {
-      const source = searchSource ? searchSource.value : 'ddg';
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&source=${source}`);
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       if (!response.ok) {
         throw new Error('Đã có lỗi xảy ra khi tìm kiếm ảnh.');
       }
@@ -177,8 +175,11 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         domain = new URL(img.image).hostname.replace('www.', '');
       } catch (e) {
-        domain = 'Nguồn ảnh';
+        domain = '';
       }
+
+      const sourceLabel = img.source || 'Nguồn ảnh';
+      const displayLabel = domain ? `${sourceLabel} • ${domain}` : sourceLabel;
 
       // Checkbox SVG icon
       const checkIcon = `
@@ -190,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="card-overlay"></div>
         <div class="card-checkbox">${checkIcon}</div>
         <div class="card-info">
-          <span class="info-badge source" title="${img.title}">${domain}</span>
+          <span class="info-badge source" title="${img.title} (${sourceLabel})">${displayLabel}</span>
           <span class="info-badge dimensions">${img.width}x${img.height}</span>
         </div>
       `;
