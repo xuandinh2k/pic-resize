@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const resizeWidth = document.getElementById('resize-width');
   const resizeHeight = document.getElementById('resize-height');
   const lockAspect = document.getElementById('lock-aspect');
+  const keepOriginal = document.getElementById('keep-original');
   const outputFormat = document.getElementById('output-format');
   const outputQuality = document.getElementById('output-quality');
   
@@ -261,6 +262,25 @@ document.addEventListener('DOMContentLoaded', () => {
   filterMinW.addEventListener('input', () => renderGallery(false));
   filterMinH.addEventListener('input', () => renderGallery(false));
 
+  // Handle keep original size checkbox changes
+  keepOriginal.addEventListener('change', () => {
+    const isKeep = keepOriginal.checked;
+    resizeWidth.disabled = isKeep;
+    resizeHeight.disabled = isKeep;
+    lockAspect.disabled = isKeep;
+    
+    // Visual styling when disabled
+    if (isKeep) {
+      resizeWidth.style.opacity = '0.5';
+      resizeHeight.style.opacity = '0.5';
+      lockAspect.closest('.checkbox-group').style.opacity = '0.5';
+    } else {
+      resizeWidth.style.opacity = '1';
+      resizeHeight.style.opacity = '1';
+      lockAspect.closest('.checkbox-group').style.opacity = '1';
+    }
+  });
+
   // Input listeners for Width / Height to handle aspect ratio lock preview
   // Wait, we don't need real-time preview modifications on the input since different images
   // have different aspect ratios. But we can adjust one input if there's at least one selected image.
@@ -313,21 +333,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const imgObj = await loadImage(blob);
 
         // Step 3: Compute Resized Dimensions
-        let w = targetW;
-        let h = targetH;
+        let w = imgObj.naturalWidth;
+        let h = imgObj.naturalHeight;
         
-        if (keepAspect) {
-          const originalRatio = imgObj.naturalWidth / imgObj.naturalHeight;
-          const targetRatio = targetW / targetH;
+        if (!keepOriginal.checked) {
+          w = targetW;
+          h = targetH;
           
-          if (originalRatio > targetRatio) {
-            // Image is wider than target ratio
-            w = targetW;
-            h = Math.round(targetW / originalRatio);
-          } else {
-            // Image is taller than target ratio
-            h = targetH;
-            w = Math.round(targetH * originalRatio);
+          if (keepAspect) {
+            const originalRatio = imgObj.naturalWidth / imgObj.naturalHeight;
+            const targetRatio = targetW / targetH;
+            
+            if (originalRatio > targetRatio) {
+              // Image is wider than target ratio
+              w = targetW;
+              h = Math.round(targetW / originalRatio);
+            } else {
+              // Image is taller than target ratio
+              h = targetH;
+              w = Math.round(targetH * originalRatio);
+            }
           }
         }
 
