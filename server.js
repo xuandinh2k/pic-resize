@@ -54,6 +54,89 @@ app.get('/api/search', async (req, res) => {
       });
     }
 
+    if (source === 'baidu') {
+      // Fetch from Baidu Images API (Does not block Vercel)
+      const baiduUrl = `https://image.baidu.com/search/acjson?tn=resultjson_com&ipn=rj&fp=result&queryWord=${encodeURIComponent(query)}&cl=2&lm=-1&ie=utf-8&oe=utf-8&word=${encodeURIComponent(query)}&rn=80`;
+      
+      const baiduRes = await fetch(baiduUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+          'Accept': 'text/plain, */*; q=0.01',
+          'Referer': 'https://image.baidu.com/'
+        }
+      });
+
+      if (!baiduRes.ok) {
+        throw new Error(`Failed to fetch from Baidu: ${baiduRes.statusText}`);
+      }
+
+      const rawText = await baiduRes.text();
+      // Clean invalid control characters and backslashes in JSON
+      const cleanText = rawText
+        .replace(/[\x00-\x1F\x7F-\x9F]/g, " ")
+        .replace(/\\(?!["\\\/bfnrtu])/g, "\\\\");
+
+      const data = JSON.parse(cleanText);
+      const items = data.data || [];
+      const results = [];
+
+      items.forEach(item => {
+        if (item.hoverURL || item.middleURL || item.thumbURL) {
+          results.push({
+            title: item.fromPageTitleEnc || item.fromPageTitle || 'Baidu Image',
+            image: item.hoverURL || item.middleURL || item.thumbURL,
+            thumbnail: item.thumbURL || item.middleURL,
+            width: item.width || 1024,
+            height: item.height || 768
+          });
+        }
+      });
+
+      return res.json({
+        query: query,
+        results: results
+      });
+    }
+
+    if (source === 'flickr') {
+      // Fetch from Flickr public feed API (Does not block Vercel)
+      const flickrUrl = `https://www.flickr.com/services/feeds/photos_public.gne?tags=${encodeURIComponent(query)}&format=json&nojsoncallback=1`;
+      
+      const flickrRes = await fetch(flickrUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (!flickrRes.ok) {
+        throw new Error(`Failed to fetch from Flickr: ${flickrRes.statusText}`);
+      }
+
+      const data = await flickrRes.json();
+      const items = data.items || [];
+      const results = [];
+
+      items.forEach(item => {
+        if (item.media && item.media.m) {
+          const thumbnail = item.media.m;
+          // _m.jpg is medium, replace with _b.jpg for large 1024px
+          const image = item.media.m.replace('_m.', '_b.');
+          results.push({
+            title: item.title || 'Flickr Photo',
+            image: image,
+            thumbnail: thumbnail,
+            width: 1024,
+            height: 768
+          });
+        }
+      });
+
+      return res.json({
+        query: query,
+        results: results
+      });
+    }
+
     // Default: DuckDuckGo Image Search
     // Step 1: Fetch main page to get the vqd token
     const mainUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
