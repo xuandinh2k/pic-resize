@@ -1,0 +1,12 @@
+{
+  "name": "image-search-resize-download",
+  "version": "1.0.0",
+  "description": "App tìm kiếm, chọn lọc, resize và tải ảnh hàng loạt",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
