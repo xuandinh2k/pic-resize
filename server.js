@@ -375,6 +375,7 @@ async function fetchGoogle(query) {
 
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
+  const serpapiKey = req.query.serpapiKey;
   if (!query) {
     return res.status(400).json({ error: 'Missing search query (q)' });
   }
@@ -387,7 +388,7 @@ app.get('/api/search', async (req, res) => {
       fetchFlickr(query),
       fetchDDG(query),
       fetchBing(query),
-      fetchGoogle(query)
+      fetchGoogle(query, serpapiKey)
     ]);
 
     // Interleave results to mix sources nicely

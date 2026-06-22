@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchForm = document.getElementById('search-form');
   const searchInput = document.getElementById('search-input');
   const searchButton = document.getElementById('search-button');
+  const serpapiKeyInput = document.getElementById('serpapi-key-input');
   
   const resizeWidth = document.getElementById('resize-width');
   const resizeHeight = document.getElementById('resize-height');
@@ -51,6 +52,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedIndices = new Set();
   let queryKeyword = '';
   let processedImages = [];
+
+  // Load and persist SerpApi key
+  if (serpapiKeyInput) {
+    serpapiKeyInput.value = localStorage.getItem('serpapi_key') || '';
+    serpapiKeyInput.addEventListener('input', () => {
+      localStorage.setItem('serpapi_key', serpapiKeyInput.value.trim());
+    });
+  }
 
   // Helper to filter search results based on UI controls
   function getFilteredImages() {
@@ -107,7 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
     searchInput.disabled = true;
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const serpapiKey = serpapiKeyInput ? serpapiKeyInput.value.trim() : '';
+      const url = `/api/search?q=${encodeURIComponent(query)}` + (serpapiKey ? `&serpapiKey=${encodeURIComponent(serpapiKey)}` : '');
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Đã có lỗi xảy ra khi tìm kiếm ảnh.');
       }
