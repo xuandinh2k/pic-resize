@@ -1,5 +1,27 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+
+// Load env variables from .env file if it exists locally (zero-dependency)
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const envConfig = fs.readFileSync(envPath, 'utf-8');
+    envConfig.split('\n').forEach(line => {
+      const parts = line.split('=');
+      if (parts.length > 1) {
+        const key = parts[0].trim();
+        const value = parts.slice(1).join('=').trim().replace(/^['"]|['"]$/g, '');
+        if (key && !process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    });
+    console.log('Loaded local .env environment variables.');
+  }
+} catch (e) {
+  console.warn('Failed to load local .env file:', e.message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -260,6 +282,40 @@ async function fetchBing(query) {
 }
 
 async function fetchGoogle(query) {
+  const apiKey = process.env.SERPAPI_KEY;
+  
+  if (apiKey) {
+    try {
+      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&api_key=${apiKey}`;
+      console.log('Querying Google Images via SerpApi...');
+      const res = await fetchWithTimeout(url, {}, 6000);
+      if (!res.ok) throw new Error(`SerpApi returned status ${res.status}`);
+      
+      const data = await res.json();
+      const items = data.images_results || [];
+      const results = [];
+      
+      items.forEach(item => {
+        if (item.original && item.thumbnail) {
+          results.push({
+            title: item.title || 'Google Image',
+            image: item.original,
+            thumbnail: item.thumbnail,
+            width: item.width || 1024,
+            height: item.height || 768,
+            source: 'Google'
+          });
+        }
+      });
+      console.log(`SerpApi successfully fetched ${results.length} Google Images.`);
+      return results;
+    } catch (err) {
+      console.error('fetchGoogle SerpApi error:', err.message);
+      return [];
+    }
+  }
+
+  // Fallback: If no SerpApi key is provided, use the scraping method
   try {
     const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&hl=en&gl=us`;
     const desktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -271,7 +327,7 @@ async function fetchGoogle(query) {
       }
     }, 4000);
 
-    if (!res.ok) throw new Error(`Google returned status ${res.status}`);
+    if (!res.ok) throw new Error(`Google scraper returned status ${res.status}`);
     
     const html = await res.text();
     const imgRegex = /\["https?:\/\/[^"]+?",\d+,\d+\]/g;
@@ -312,7 +368,7 @@ async function fetchGoogle(query) {
     
     return results;
   } catch (err) {
-    console.error('fetchGoogle error:', err.message);
+    console.error('fetchGoogle scraper fallback error:', err.message);
     return [];
   }
 }
