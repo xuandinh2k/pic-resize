@@ -385,43 +385,16 @@ app.get('/api/search', async (req, res) => {
   }
 
   try {
-    // Run searches in parallel
-    const [wikiResults, baiduResults, flickrResults, ddgResults, bingResults, googleData] = await Promise.all([
-      fetchWiki(query),
-      fetchBaidu(query),
-      fetchFlickr(query),
-      fetchDDG(query),
-      fetchBing(query),
-      fetchGoogle(query, serpapiKey)
-    ]);
+    // Run search only on Google Images
+    const googleData = await fetchGoogle(query, serpapiKey);
 
     const googleResults = googleData.results || [];
     const googleError = googleData.error || null;
 
-    // Interleave results to mix sources nicely
-    let allResults = [];
-    const maxLength = Math.max(
-      wikiResults.length, 
-      baiduResults.length, 
-      flickrResults.length, 
-      ddgResults.length,
-      bingResults.length,
-      googleResults.length
-    );
-    
-    for (let i = 0; i < maxLength; i++) {
-      if (i < ddgResults.length) allResults.push(ddgResults[i]);
-      if (i < bingResults.length) allResults.push(bingResults[i]);
-      if (i < googleResults.length) allResults.push(googleResults[i]);
-      if (i < baiduResults.length) allResults.push(baiduResults[i]);
-      if (i < wikiResults.length) allResults.push(wikiResults[i]);
-      if (i < flickrResults.length) allResults.push(flickrResults[i]);
-    }
-    
-    // Deduplicate by original image URL
+    // Deduplicate results by original URL
     const seenUrls = new Set();
     const uniqueResults = [];
-    for (const item of allResults) {
+    for (const item of googleResults) {
       if (!seenUrls.has(item.image)) {
         seenUrls.add(item.image);
         uniqueResults.push(item);
@@ -435,7 +408,7 @@ app.get('/api/search', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error during aggregated search:', err);
+    console.error('Error during Google search:', err);
     res.status(500).json({ error: err.message });
   }
 });
