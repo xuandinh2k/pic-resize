@@ -281,17 +281,21 @@ async function fetchBing(query) {
   }
 }
 
-async function fetchGoogle(query) {
-  const apiKey = process.env.SERPAPI_KEY;
+async function fetchGoogle(query, serpapiKey) {
+  const apiKey = serpapiKey || process.env.SERPAPI_KEY;
   
   if (apiKey) {
     try {
       const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&api_key=${apiKey}`;
       console.log('Querying Google Images via SerpApi...');
       const res = await fetchWithTimeout(url, {}, 6000);
-      if (!res.ok) throw new Error(`SerpApi returned status ${res.status}`);
       
       const data = await res.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      if (!res.ok) throw new Error(`SerpApi returned status ${res.status}`);
+      
       const items = data.images_results || [];
       const results = [];
       
@@ -308,10 +312,10 @@ async function fetchGoogle(query) {
         }
       });
       console.log(`SerpApi successfully fetched ${results.length} Google Images.`);
-      return results;
+      return { results };
     } catch (err) {
       console.error('fetchGoogle SerpApi error:', err.message);
-      return [];
+      return { error: err.message, results: [] };
     }
   }
 
@@ -366,10 +370,10 @@ async function fetchGoogle(query) {
       });
     }
     
-    return results;
+    return { results };
   } catch (err) {
     console.error('fetchGoogle scraper fallback error:', err.message);
-    return [];
+    return { results: [] };
   }
 }
 
@@ -382,7 +386,7 @@ app.get('/api/search', async (req, res) => {
 
   try {
     // Run searches in parallel
-    const [wikiResults, baiduResults, flickrResults, ddgResults, bingResults, googleResults] = await Promise.all([
+    const [wikiResults, baiduResults, flickrResults, ddgResults, bingResults, googleData] = await Promise.all([
       fetchWiki(query),
       fetchBaidu(query),
       fetchFlickr(query),
@@ -390,6 +394,9 @@ app.get('/api/search', async (req, res) => {
       fetchBing(query),
       fetchGoogle(query, serpapiKey)
     ]);
+
+    const googleResults = googleData.results || [];
+    const googleError = googleData.error || null;
 
     // Interleave results to mix sources nicely
     let allResults = [];
@@ -423,7 +430,8 @@ app.get('/api/search', async (req, res) => {
 
     res.json({
       query: query,
-      results: uniqueResults
+      results: uniqueResults,
+      error: googleError
     });
 
   } catch (err) {

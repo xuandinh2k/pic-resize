@@ -143,6 +143,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await response.json();
       imagesList = data.results || [];
       
+      if (data.error) {
+        showSerpApiWarning(data.error);
+      }
+      
       renderGallery();
     } catch (err) {
       console.error(err);
@@ -246,6 +250,18 @@ document.addEventListener('DOMContentLoaded', () => {
     galleryGrid.classList.add('hidden');
     galleryEmpty.classList.remove('hidden');
     galleryEmpty.querySelector('p').textContent = message || 'Có lỗi xảy ra. Hãy tải lại trang hoặc thử lại.';
+  }
+
+  // Show SerpApi specific warning message under the key input
+  function showSerpApiWarning(errorMsg) {
+    if (saveKeyStatus) {
+      saveKeyStatus.textContent = `⚠️ Lỗi Google: ${errorMsg}`;
+      saveKeyStatus.style.color = '#f43f5e';
+      saveKeyStatus.style.opacity = '1';
+      setTimeout(() => {
+        saveKeyStatus.style.opacity = '0';
+      }, 8000);
+    }
   }
 
   // Toggle selection for a single card
