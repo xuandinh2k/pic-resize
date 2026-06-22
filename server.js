@@ -288,7 +288,7 @@ async function fetchGoogle(query, serpapiKey) {
     try {
       const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&api_key=${apiKey}&hl=vi&gl=vn`;
       console.log('Querying Google Images via SerpApi...');
-      const res = await fetchWithTimeout(url, {}, 6000);
+      const res = await fetchWithTimeout(url, {}, 9000);
       
       const data = await res.json();
       if (data.error) {
