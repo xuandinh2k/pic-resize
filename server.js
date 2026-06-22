@@ -286,7 +286,7 @@ async function fetchGoogle(query, serpapiKey) {
   
   if (apiKey) {
     try {
-      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&api_key=${apiKey}`;
+      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&api_key=${apiKey}&hl=vi&gl=vn`;
       console.log('Querying Google Images via SerpApi...');
       const res = await fetchWithTimeout(url, {}, 6000);
       
@@ -321,7 +321,7 @@ async function fetchGoogle(query, serpapiKey) {
 
   // Fallback: If no SerpApi key is provided, use the scraping method
   try {
-    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&hl=en&gl=us`;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&hl=vi&gl=vn`;
     const desktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     
     const res = await fetchWithTimeout(url, {
