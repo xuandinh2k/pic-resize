@@ -31,6 +31,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressPercentage = document.getElementById('progress-percentage');
   const processingLog = document.getElementById('processing-log');
 
+  // Lightbox DOM Elements
+  const lightboxModal = document.getElementById('lightbox-modal');
+  const lightboxClose = document.getElementById('lightbox-close');
+  const lightboxPrev = document.getElementById('lightbox-prev');
+  const lightboxNext = document.getElementById('lightbox-next');
+  const lightboxImg = document.getElementById('lightbox-img');
+  const lightboxSpinner = document.getElementById('lightbox-loading');
+  const lightboxTitle = document.getElementById('lightbox-title');
+  const lightboxSource = document.getElementById('lightbox-source');
+  const lightboxDimensions = document.getElementById('lightbox-dimensions');
+  const lightboxBtnSelect = document.getElementById('lightbox-btn-select');
+
   // Filter DOM Elements
   const filterBar = document.getElementById('filter-bar');
   const filterText = document.getElementById('filter-text');
@@ -54,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedIndices = new Set();
   let queryKeyword = '';
   let processedImages = [];
+  let currentLightboxIndex = -1;
 
   // Load and persist SerpApi key on Save click
   if (serpapiKeyInput && btnSaveKey && saveKeyStatus) {
@@ -229,9 +242,16 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
 
-      // Card click toggles checkbox selection
-      card.addEventListener('click', () => {
+      // Checkbox click toggles selection, stopping propagation so lightbox doesn't open
+      const checkboxEl = card.querySelector('.card-checkbox');
+      checkboxEl.addEventListener('click', (e) => {
+        e.stopPropagation();
         toggleImageSelection(idx, card);
+      });
+
+      // Card click opens Lightbox modal
+      card.addEventListener('click', () => {
+        openLightbox(idx);
       });
 
       galleryGrid.appendChild(card);
@@ -275,6 +295,146 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateUIStats();
   }
+
+  // --- LIGHTBOX FUNCTIONS ---
+  function openLightbox(index) {
+    if (index < 0 || index >= imagesList.length) return;
+    currentLightboxIndex = index;
+    const imgData = imagesList[index];
+
+    // Show modal
+    lightboxModal.classList.remove('hidden');
+    
+    // Set loading state
+    lightboxImg.classList.add('loading');
+    lightboxSpinner.classList.remove('hidden');
+    
+    // Load high-res image
+    lightboxImg.src = imgData.image;
+    
+    lightboxImg.onload = () => {
+      lightboxSpinner.classList.add('hidden');
+      lightboxImg.classList.remove('loading');
+    };
+    
+    lightboxImg.onerror = () => {
+      lightboxSpinner.classList.add('hidden');
+      lightboxImg.classList.remove('loading');
+      // Fallback to thumbnail if high-res image fails to load
+      if (lightboxImg.src !== imgData.thumbnail) {
+        lightboxImg.src = imgData.thumbnail;
+      }
+    };
+
+    // Update info details
+    lightboxTitle.textContent = imgData.title || 'Không có tiêu đề';
+    
+    // Handle domain/source labeling
+    let domain = '';
+    try {
+      domain = new URL(imgData.image).hostname.replace('www.', '');
+    } catch (e) {
+      domain = '';
+    }
+    const sourceLabel = imgData.source || 'Nguồn ảnh';
+    lightboxSource.textContent = domain ? `${sourceLabel} • ${domain}` : sourceLabel;
+    
+    lightboxDimensions.textContent = `${imgData.width}x${imgData.height}`;
+    
+    // Update select button
+    updateLightboxSelectBtn();
+  }
+
+  function closeLightbox() {
+    lightboxModal.classList.add('hidden');
+    lightboxImg.src = ''; // Clear image to free memory and prevent previous image flashing
+    currentLightboxIndex = -1;
+  }
+
+  function updateLightboxSelectBtn() {
+    if (currentLightboxIndex === -1) return;
+    
+    if (selectedIndices.has(currentLightboxIndex)) {
+      lightboxBtnSelect.textContent = 'Bỏ chọn ảnh này (Đã tích)';
+      lightboxBtnSelect.classList.remove('btn-primary');
+      lightboxBtnSelect.classList.add('selected-action');
+    } else {
+      lightboxBtnSelect.textContent = 'Chọn tải ảnh này';
+      lightboxBtnSelect.classList.remove('selected-action');
+      lightboxBtnSelect.classList.add('btn-primary');
+    }
+  }
+
+  function toggleLightboxSelection() {
+    if (currentLightboxIndex === -1) return;
+    const idx = currentLightboxIndex;
+    
+    // Toggle state
+    if (selectedIndices.has(idx)) {
+      selectedIndices.delete(idx);
+    } else {
+      selectedIndices.add(idx);
+    }
+    
+    // Update main stats
+    updateUIStats();
+    
+    // Update lightbox button styling
+    updateLightboxSelectBtn();
+    
+    // Sync to background card grid item
+    const card = galleryGrid.querySelector(`.image-card[data-index="${idx}"]`);
+    if (card) {
+      if (selectedIndices.has(idx)) {
+        card.classList.add('selected');
+      } else {
+        card.classList.remove('selected');
+      }
+    }
+  }
+
+  function navigateLightbox(direction) {
+    const visible = getFilteredImages();
+    if (visible.length === 0) return;
+    
+    const visibleIndex = visible.findIndex(item => item.originalIndex === currentLightboxIndex);
+    
+    let nextVisibleIndex = 0;
+    if (visibleIndex === -1) {
+      // If current is not found in visible list, just open the first visible image
+      nextVisibleIndex = 0;
+    } else {
+      nextVisibleIndex = (visibleIndex + direction + visible.length) % visible.length;
+    }
+    
+    openLightbox(visible[nextVisibleIndex].originalIndex);
+  }
+
+  // Lightbox event listeners
+  lightboxClose.addEventListener('click', closeLightbox);
+  lightboxPrev.addEventListener('click', () => navigateLightbox(-1));
+  lightboxNext.addEventListener('click', () => navigateLightbox(1));
+  lightboxBtnSelect.addEventListener('click', toggleLightboxSelection);
+
+  // Close lightbox when clicking background backdrop
+  lightboxModal.addEventListener('click', (e) => {
+    if (e.target === lightboxModal) {
+      closeLightbox();
+    }
+  });
+
+  // Keyboard navigation & close
+  document.addEventListener('keydown', (e) => {
+    if (lightboxModal.classList.contains('hidden')) return;
+    
+    if (e.key === 'Escape') {
+      closeLightbox();
+    } else if (e.key === 'ArrowRight') {
+      navigateLightbox(1);
+    } else if (e.key === 'ArrowLeft') {
+      navigateLightbox(-1);
+    }
+  });
 
   // Update Statistics and button states
   function updateUIStats() {

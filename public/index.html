@@ -263,6 +263,30 @@
     </div>
   </div>
 
+  <!-- Lightbox Modal -->
+  <div id="lightbox-modal" class="lightbox-modal hidden">
+    <button id="lightbox-close" class="lightbox-close" aria-label="Đóng">&times;</button>
+    <button id="lightbox-prev" class="lightbox-nav lightbox-prev" aria-label="Ảnh trước">&lt;</button>
+    <button id="lightbox-next" class="lightbox-nav lightbox-next" aria-label="Ảnh sau">&gt;</button>
+    
+    <div class="lightbox-content">
+      <div class="lightbox-img-wrapper">
+        <div id="lightbox-loading" class="lightbox-spinner"></div>
+        <img id="lightbox-img" src="" alt="Hình ảnh phóng to">
+      </div>
+      <div class="lightbox-details">
+        <h3 id="lightbox-title">Tiêu đề ảnh</h3>
+        <div class="lightbox-meta">
+          <span id="lightbox-source" class="info-badge">Nguồn</span>
+          <span id="lightbox-dimensions" class="info-badge dimensions">Kích thước</span>
+        </div>
+        <div class="lightbox-actions">
+          <button id="lightbox-btn-select" class="btn btn-primary btn-large">Chọn tải ảnh này</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Footer -->
   <footer class="app-footer-bar">
     <p>&copy; 2026 PicDownResizer - Sức mạnh xử lý ảnh tiện lợi</p>
