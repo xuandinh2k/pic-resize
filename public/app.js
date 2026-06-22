@@ -9,8 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const resizeWidth = document.getElementById('resize-width');
   const resizeHeight = document.getElementById('resize-height');
-  const lockAspect = document.getElementById('lock-aspect');
-  const keepOriginal = document.getElementById('keep-original');
+  const resizeMode = document.getElementById('resize-mode');
   const outputFormat = document.getElementById('output-format');
   const outputQuality = document.getElementById('output-quality');
   
@@ -466,22 +465,19 @@ document.addEventListener('DOMContentLoaded', () => {
   filterMinW.addEventListener('input', () => renderGallery(false));
   filterMinH.addEventListener('input', () => renderGallery(false));
 
-  // Handle keep original size checkbox changes
-  keepOriginal.addEventListener('change', () => {
-    const isKeep = keepOriginal.checked;
-    resizeWidth.disabled = isKeep;
-    resizeHeight.disabled = isKeep;
-    lockAspect.disabled = isKeep;
+  // Handle resize mode change to disable/enable size inputs
+  resizeMode.addEventListener('change', () => {
+    const isOriginal = resizeMode.value === 'original';
+    resizeWidth.disabled = isOriginal;
+    resizeHeight.disabled = isOriginal;
     
     // Visual styling when disabled
-    if (isKeep) {
+    if (isOriginal) {
       resizeWidth.style.opacity = '0.5';
       resizeHeight.style.opacity = '0.5';
-      lockAspect.closest('.checkbox-group').style.opacity = '0.5';
     } else {
       resizeWidth.style.opacity = '1';
       resizeHeight.style.opacity = '1';
-      lockAspect.closest('.checkbox-group').style.opacity = '1';
     }
   });
 
@@ -502,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
     processedImages = [];
     const targetW = parseInt(resizeWidth.value) || 1080;
     const targetH = parseInt(resizeHeight.value) || 1080;
-    const keepAspect = lockAspect.checked;
+    const mode = resizeMode.value;
     const format = outputFormat.value;
     const quality = parseFloat(outputQuality.value) || 0.9;
     
@@ -536,41 +532,56 @@ document.addEventListener('DOMContentLoaded', () => {
         // Step 2: Load into HTML Image
         const imgObj = await loadImage(blob);
 
-        // Step 3: Compute Resized Dimensions
-        let w = imgObj.naturalWidth;
-        let h = imgObj.naturalHeight;
-        
-        if (!keepOriginal.checked) {
-          w = targetW;
-          h = targetH;
-          
-          if (keepAspect) {
-            const originalRatio = imgObj.naturalWidth / imgObj.naturalHeight;
-            const targetRatio = targetW / targetH;
-            
-            if (originalRatio > targetRatio) {
-              // Image is wider than target ratio
-              w = targetW;
-              h = Math.round(targetW / originalRatio);
-            } else {
-              // Image is taller than target ratio
-              h = targetH;
-              w = Math.round(targetH * originalRatio);
-            }
-          }
-        }
-
-        // Step 4: Resize via Canvas
+        // Step 3 & 4: Compute dimensions & Draw via Canvas
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
         const ctx = canvas.getContext('2d');
         
         // Apply high-quality image smoothing
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        
-        ctx.drawImage(imgObj, 0, 0, w, h);
+
+        let w = imgObj.naturalWidth;
+        let h = imgObj.naturalHeight;
+
+        if (mode === 'original') {
+          canvas.width = w;
+          canvas.height = h;
+          ctx.drawImage(imgObj, 0, 0, w, h);
+        } else if (mode === 'stretch') {
+          w = targetW;
+          h = targetH;
+          canvas.width = w;
+          canvas.height = h;
+          ctx.drawImage(imgObj, 0, 0, w, h);
+        } else if (mode === 'fit') {
+          const originalRatio = imgObj.naturalWidth / imgObj.naturalHeight;
+          const targetRatio = targetW / targetH;
+          if (originalRatio > targetRatio) {
+            // Image is wider than target ratio
+            w = targetW;
+            h = Math.round(targetW / originalRatio);
+          } else {
+            // Image is taller than target ratio
+            h = targetH;
+            w = Math.round(targetH * originalRatio);
+          }
+          canvas.width = w;
+          canvas.height = h;
+          ctx.drawImage(imgObj, 0, 0, w, h);
+        } else if (mode === 'crop') {
+          // Centered Crop (Cover)
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const scale = Math.max(targetW / imgObj.naturalWidth, targetH / imgObj.naturalHeight);
+          const scaledW = imgObj.naturalWidth * scale;
+          const scaledH = imgObj.naturalHeight * scale;
+          const x = (targetW - scaledW) / 2;
+          const y = (targetH - scaledH) / 2;
+          
+          ctx.drawImage(imgObj, x, y, scaledW, scaledH);
+          w = targetW;
+          h = targetH;
+        }
 
         // Step 5: Convert Canvas to Blob
         const resizedBlob = await getCanvasBlob(canvas, format, quality);

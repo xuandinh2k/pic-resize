@@ -70,22 +70,15 @@
             </div>
           </div>
 
-          <!-- Lock Aspect Ratio -->
-          <div class="checkbox-group">
-            <label class="switch-container">
-              <input type="checkbox" id="lock-aspect" checked>
-              <span class="switch-slider"></span>
-            </label>
-            <span class="label-text">Giữ nguyên tỉ lệ (Aspect Ratio)</span>
-          </div>
-
-          <!-- Keep Original Size -->
-          <div class="checkbox-group mt-1">
-            <label class="switch-container">
-              <input type="checkbox" id="keep-original">
-              <span class="switch-slider"></span>
-            </label>
-            <span class="label-text">Giữ kích thước gốc (Không resize)</span>
+          <!-- Chế độ Resize -->
+          <div class="input-group mt-1">
+            <label for="resize-mode">Chế độ Resize</label>
+            <select id="resize-mode">
+              <option value="crop" selected>Cắt ảnh vừa khít (Crop - Đẹp nhất)</option>
+              <option value="fit">Co giãn giữ tỉ lệ (Fit)</option>
+              <option value="stretch">Co dẹt hình vừa khung (Stretch)</option>
+              <option value="original">Giữ kích thước gốc (Không resize)</option>
+            </select>
           </div>
 
           <!-- Format & Quality -->
