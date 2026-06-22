@@ -219,6 +219,104 @@ async function fetchDDG(query) {
   }
 }
 
+async function fetchBing(query) {
+  try {
+    const url = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}`;
+    const res = await fetchWithTimeout(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    }, 4000);
+
+    if (!res.ok) throw new Error(`Bing returned status ${res.status}`);
+    
+    const html = await res.text();
+    const iuscMatches = html.match(/class="iusc"[^>]*?m="([^"]+?)"/g) || [];
+    const results = [];
+
+    iuscMatches.forEach(match => {
+      try {
+        const mJsonText = match.match(/m="([^"]+?)"/)[1].replace(/&quot;/g, '"');
+        const mJson = JSON.parse(mJsonText);
+        if (mJson.murl && mJson.turl) {
+          results.push({
+            title: mJson.t || mJson.desc || 'Bing Image',
+            image: mJson.murl,
+            thumbnail: mJson.turl.replace(/&amp;/g, '&'),
+            width: 1024,
+            height: 768,
+            source: 'Bing'
+          });
+        }
+      } catch (e) {
+        // Ignore single parse errors
+      }
+    });
+    return results;
+  } catch (err) {
+    console.error('fetchBing error:', err.message);
+    return [];
+  }
+}
+
+async function fetchGoogle(query) {
+  try {
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&hl=en&gl=us`;
+    const desktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    
+    const res = await fetchWithTimeout(url, {
+      headers: {
+        'User-Agent': desktopUA,
+        'Cookie': 'CONSENT=YES+cb.20210831-07-p0.en+FX+999;'
+      }
+    }, 4000);
+
+    if (!res.ok) throw new Error(`Google returned status ${res.status}`);
+    
+    const html = await res.text();
+    const imgRegex = /\["https?:\/\/[^"]+?",\d+,\d+\]/g;
+    const matches = html.match(imgRegex) || [];
+    
+    const results = [];
+    const originalUrls = [];
+    const thumbnailUrls = [];
+
+    matches.forEach(match => {
+      try {
+        const parsed = JSON.parse(match);
+        const urlStr = parsed[0];
+        const height = parsed[1];
+        const width = parsed[2];
+
+        if (urlStr.includes('gstatic.com')) {
+          thumbnailUrls.push({ url: urlStr, width, height });
+        } else if (urlStr.startsWith('http')) {
+          originalUrls.push({ url: urlStr, width, height });
+        }
+      } catch (e) {
+        // Ignore single parse errors
+      }
+    });
+
+    const count = Math.min(originalUrls.length, thumbnailUrls.length);
+    for (let i = 0; i < count; i++) {
+      results.push({
+        title: 'Google Image',
+        image: originalUrls[i].url,
+        thumbnail: thumbnailUrls[i].url,
+        width: originalUrls[i].width,
+        height: originalUrls[i].height,
+        source: 'Google'
+      });
+    }
+    
+    return results;
+  } catch (err) {
+    console.error('fetchGoogle error:', err.message);
+    return [];
+  }
+}
+
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   if (!query) {
@@ -227,19 +325,30 @@ app.get('/api/search', async (req, res) => {
 
   try {
     // Run searches in parallel
-    const [wikiResults, baiduResults, flickrResults, ddgResults] = await Promise.all([
+    const [wikiResults, baiduResults, flickrResults, ddgResults, bingResults, googleResults] = await Promise.all([
       fetchWiki(query),
       fetchBaidu(query),
       fetchFlickr(query),
-      fetchDDG(query)
+      fetchDDG(query),
+      fetchBing(query),
+      fetchGoogle(query)
     ]);
 
     // Interleave results to mix sources nicely
     let allResults = [];
-    const maxLength = Math.max(wikiResults.length, baiduResults.length, flickrResults.length, ddgResults.length);
+    const maxLength = Math.max(
+      wikiResults.length, 
+      baiduResults.length, 
+      flickrResults.length, 
+      ddgResults.length,
+      bingResults.length,
+      googleResults.length
+    );
     
     for (let i = 0; i < maxLength; i++) {
       if (i < ddgResults.length) allResults.push(ddgResults[i]);
+      if (i < bingResults.length) allResults.push(bingResults[i]);
+      if (i < googleResults.length) allResults.push(googleResults[i]);
       if (i < baiduResults.length) allResults.push(baiduResults[i]);
       if (i < wikiResults.length) allResults.push(wikiResults[i]);
       if (i < flickrResults.length) allResults.push(flickrResults[i]);
