@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchInput = document.getElementById('search-input');
   const searchButton = document.getElementById('search-button');
   const serpapiKeyInput = document.getElementById('serpapi-key-input');
+  const btnSaveKey = document.getElementById('btn-save-key');
+  const saveKeyStatus = document.getElementById('save-key-status');
   
   const resizeWidth = document.getElementById('resize-width');
   const resizeHeight = document.getElementById('resize-height');
@@ -53,11 +55,26 @@ document.addEventListener('DOMContentLoaded', () => {
   let queryKeyword = '';
   let processedImages = [];
 
-  // Load and persist SerpApi key
-  if (serpapiKeyInput) {
+  // Load and persist SerpApi key on Save click
+  if (serpapiKeyInput && btnSaveKey && saveKeyStatus) {
     serpapiKeyInput.value = localStorage.getItem('serpapi_key') || '';
-    serpapiKeyInput.addEventListener('input', () => {
-      localStorage.setItem('serpapi_key', serpapiKeyInput.value.trim());
+    
+    btnSaveKey.addEventListener('click', () => {
+      const key = serpapiKeyInput.value.trim();
+      localStorage.setItem('serpapi_key', key);
+      
+      if (key) {
+        saveKeyStatus.textContent = '✓ Đã lưu thành công!';
+        saveKeyStatus.style.color = '#10b981'; // emerald green
+      } else {
+        saveKeyStatus.textContent = '✓ Đã xóa Key!';
+        saveKeyStatus.style.color = '#f43f5e'; // rose pink
+      }
+      saveKeyStatus.style.opacity = '1';
+      
+      setTimeout(() => {
+        saveKeyStatus.style.opacity = '0';
+      }, 2500);
     });
   }
 
